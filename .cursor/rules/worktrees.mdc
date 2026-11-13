@@ -1,0 +1,21 @@
+---
+description: Every feature is built on its own git worktree; never commit to main
+alwaysApply: true
+---
+
+# One feature, one worktree
+
+Parallel humans and agents share this repo. Shared working trees cause conflicts and lost work.
+
+- Before editing for a new feature or fix, check `git rev-parse --abbrev-ref HEAD`. If it is `main`, create a worktree first (use the `worktree-feature` skill). Do not edit on `main`.
+- Location: `../<repo>-worktrees/<slug>` next to the main checkout. Branch: `<type>/<team>/<slug>`, e.g. `feat/payments/refund-tier-cap`.
+- One agent per worktree. Never edit files in another worktree's directory.
+- Never `git stash`, `reset --hard`, or `checkout` another branch inside a worktree you did not create.
+- After merge: `git worktree remove <path>` and delete the branch.
+
+```bash
+# good
+git worktree add -b feat/accounts/email-change-card ../Ivan-Mornar-worktrees/email-change-card main
+# bad
+git checkout -b feat/x   # inside the main checkout others are using
+```

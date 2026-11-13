@@ -1,0 +1,69 @@
+name: reply_to_customer
+version: 1
+owner_team: platform
+description: >
+  Send a message to the customer on the case's channel, after the output guard has passed it.
+
+risk_tier: R3
+side_effect: write
+kill_switch_flag: agent.tool.reply_to_customer.enabled
+
+credentials:
+  scope: ["helia-ticketing:messages:send"]
+
+customer_binding: case
+
+inputs:
+  customer_id: { type: string, source: case }
+  body:        { type: string, source: model, max_length: 4000 }
+  category:    { type: enum, source: model, values: [informational, action_confirmation, clarification, other] }
+  topics:
+    type: list
+    source: derived
+    rule: "output guard topic classifier on body (legal, chargeback, security, cancellation, ...); model value ignored"
+  claims_verified:
+    type: boolean
+    source: derived
+    rule: "output guard: every amount, date, plan and policy statement maps to a tool result or KB passage ID"
+  guard_passed:
+    type: boolean
+    source: derived
+    rule: "output guard: sanitized, PII and foreign-identifier free, links allowlisted, no prompt echo"
+
+pii_fields: [customer_id, body]
+
+idempotency:
+  key: "sha256(case_id, step_id, sha256(body))"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET the case messages and assert one message with this idempotency key"
+  states:
+    sent: done
+    failed: failed
+
+undo:
+  kind: none
+  how: "Cannot unsend. A human-approved correction message is the only remedy."
+
+rate_limits:
+  per_customer: 10/day
+  global: 3000/hour
+
+approval:
+  policy_ref: reply_to_customer
+  card_fields: [body, category, topics, claims_verified, cited_sources]
+
+audit:
+  extra_fields: [category, topics, claims_verified]
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/reply_to_customer.test.ts
+  evals: evals/reply_to_customer/

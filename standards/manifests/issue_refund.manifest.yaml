@@ -1,0 +1,75 @@
+# The riskiest tool, filled in end to end.
+
+name: issue_refund
+version: 2
+owner_team: payments
+description: >
+  Refund all or part of one specific charge back to the original payment method.
+
+risk_tier: R3
+side_effect: write
+kill_switch_flag: agent.tool.issue_refund.enabled
+
+credentials:
+  scope: ["helia-billing:refunds:create", "helia-billing:charges:read"]
+
+customer_binding: case
+
+inputs:
+  customer_id: { type: string, source: case }
+  charge_id:   { type: string, source: model, candidates: "charge ids returned by look_up_account for this case's customer" }
+  scope:       { type: enum, source: model, values: [full, prorated_remaining_period] }
+  reason_code: { type: enum, source: model, values: [duplicate_charge, service_outage, billing_error, goodwill] }
+  amount_minor:
+    type: integer
+    source: derived
+    rule: >
+      refundable = charge.amount_minor - sum(charge.refunds.amount_minor).
+      full: amount_minor = refundable.
+      prorated_remaining_period: amount_minor = min(refundable,
+      floor(charge.amount_minor * unused_days / period_days)), where unused_days and period_days
+      come from the subscription period the charge paid for.
+      Reject if amount_minor <= 0.
+  currency:
+    type: string
+    source: derived
+    rule: "charge.currency (ISO 4217). Refund is always in the charge currency; no conversion."
+
+pii_fields: [customer_id]
+
+idempotency:
+  key: "sha256(case_id, step_id, charge_id, amount_minor, currency)"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET /charges/{charge_id}/refunds and find the refund with this idempotency key"
+  states:
+    succeeded: done        # reply may say "refunded"
+    pending: initiated     # reply may only say "initiated, usually arrives in 5 to 10 business days"
+    failed: failed         # no customer claim; escalate
+
+undo:
+  kind: none
+  how: "Money cannot be pulled back by the agent. Finance recovery process only."
+
+rate_limits:
+  per_customer: 1/90d     # agent-initiated, any amount
+  global: 200/hour        # auto-trips the kill switch if exceeded
+
+approval:
+  policy_ref: issue_refund
+  card_fields: [charge_id, charge_date, charge_amount_minor, amount_minor, currency, scope, reason_code, prior_refunds_90d]
+
+audit:
+  extra_fields: [charge_id, reason_code, scope, currency]
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/issue_refund.test.ts
+  evals: evals/issue_refund/

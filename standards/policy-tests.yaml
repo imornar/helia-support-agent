@@ -1,0 +1,169 @@
+# Table-driven boundary tests for standards/approval-policy.example.yaml.
+# CI runs them with the reference evaluator in scripts/validate.py; the production policy
+# engine must pass the same file.
+#
+# enable:      rule ids to treat as enabled for this case (simulates a later rollout phase)
+# extra_rules: test-only rules added for this case
+# expect:      decision, and optionally the rule id that decided (null = default_decision)
+
+defaults:
+  case: { customer_id: c_1, last_action_state: none }
+  charge: { currency: USD, within_refund_window: true }
+  customer: { agent_refunds_90d: 0 }
+  customer_confirmation: { signed_link_verified: false }
+
+cases:
+  # ---- issue_refund ----
+  - name: refund at the auto cap is auto once enabled
+    tool: issue_refund
+    enable: [refund-small-auto]
+    params: { customer_id: c_1, amount_minor: 5000, currency: USD }
+    expect: { decision: auto, rule: refund-small-auto }
+
+  - name: refund one cent above the auto cap is human
+    tool: issue_refund
+    enable: [refund-small-auto]
+    params: { customer_id: c_1, amount_minor: 5001, currency: USD }
+    expect: { decision: human, rule: null }
+
+  - name: refund at the auto cap is human while the rule is disabled
+    tool: issue_refund
+    params: { customer_id: c_1, amount_minor: 5000, currency: USD }
+    expect: { decision: human, rule: null }
+
+  - name: small refund is human for a second agent refund in 90 days
+    tool: issue_refund
+    enable: [refund-small-auto]
+    customer: { agent_refunds_90d: 1 }
+    params: { customer_id: c_1, amount_minor: 1000, currency: USD }
+    expect: { decision: human, rule: null }
+
+  - name: small refund is human outside the refund window
+    tool: issue_refund
+    enable: [refund-small-auto]
+    charge: { currency: USD, within_refund_window: false }
+    params: { customer_id: c_1, amount_minor: 1000, currency: USD }
+    expect: { decision: human, rule: null }
+
+  - name: small non-USD refund is human until per-currency caps exist
+    tool: issue_refund
+    enable: [refund-small-auto]
+    charge: { currency: EUR, within_refund_window: true }
+    params: { customer_id: c_1, amount_minor: 1000, currency: EUR }
+    expect: { decision: human, rule: null }
+
+  - name: refund in a different currency than the charge is denied
+    tool: issue_refund
+    params: { customer_id: c_1, amount_minor: 1000, currency: GBP }
+    expect: { decision: deny, rule: refund-currency-mismatch-deny }
+
+  - name: refund of exactly 500.00 follows normal rules
+    tool: issue_refund
+    params: { customer_id: c_1, amount_minor: 50000, currency: USD }
+    expect: { decision: human, rule: null }
+
+  - name: refund of 500.01 hits the always-human floor
+    tool: issue_refund
+    params: { customer_id: c_1, amount_minor: 50001, currency: USD }
+    expect: { decision: human, rule: refund-over-500-always-human }
+
+  - name: a looser auto rule cannot beat the 500 floor
+    tool: issue_refund
+    extra_rules:
+      - { id: test-loose-auto, priority: 100, tool: issue_refund, when: "amount_minor <= 100000", decision: auto }
+    params: { customer_id: c_1, amount_minor: 60000, currency: USD }
+    expect: { decision: human, rule: refund-over-500-always-human }
+
+  # ---- change_plan ----
+  - name: confirmed upgrade is auto once enabled
+    tool: change_plan
+    enable: [plan-upgrade-confirmed-auto]
+    customer_confirmation: { signed_link_verified: true }
+    params: { customer_id: c_1, direction: upgrade, loses_data: false, currency: USD, proration_minor: 10000 }
+    expect: { decision: auto, rule: plan-upgrade-confirmed-auto }
+
+  - name: confirmed upgrade above the proration cap is human
+    tool: change_plan
+    enable: [plan-upgrade-confirmed-auto]
+    customer_confirmation: { signed_link_verified: true }
+    params: { customer_id: c_1, direction: upgrade, loses_data: false, currency: USD, proration_minor: 10001 }
+    expect: { decision: human, rule: null }
+
+  - name: upgrade without signed confirmation is human
+    tool: change_plan
+    enable: [plan-upgrade-confirmed-auto]
+    params: { customer_id: c_1, direction: upgrade, loses_data: false, currency: USD, proration_minor: 500 }
+    expect: { decision: human, rule: null }
+
+  - name: downgrade is always human
+    tool: change_plan
+    enable: [plan-upgrade-confirmed-auto]
+    params: { customer_id: c_1, direction: downgrade, loses_data: false, currency: USD, proration_minor: 0 }
+    expect: { decision: human, rule: plan-downgrade-or-data-loss-human }
+
+  # ---- update_account ----
+  - name: display name change is auto once enabled
+    tool: update_account
+    enable: [account-profile-fields-auto]
+    params: { customer_id: c_1, field: display_name }
+    expect: { decision: auto, rule: account-profile-fields-auto }
+
+  - name: email change is always human
+    tool: update_account
+    enable: [account-profile-fields-auto]
+    params: { customer_id: c_1, field: email }
+    expect: { decision: human, rule: account-identity-fields-human }
+
+  # ---- reply_to_customer ----
+  - name: verified informational reply is auto once enabled
+    tool: reply_to_customer
+    enable: [reply-informational-auto]
+    params: { customer_id: c_1, category: informational, topics: [], guard_passed: true, claims_verified: true }
+    expect: { decision: auto, rule: reply-informational-auto }
+
+  - name: informational reply is human while the rule is disabled
+    tool: reply_to_customer
+    params: { customer_id: c_1, category: informational, topics: [], guard_passed: true, claims_verified: true }
+    expect: { decision: human, rule: null }
+
+  - name: reply with an unverified claim is human
+    tool: reply_to_customer
+    enable: [reply-informational-auto]
+    params: { customer_id: c_1, category: informational, topics: [], guard_passed: true, claims_verified: false }
+    expect: { decision: human, rule: reply-guard-or-claims-failed-human }
+
+  - name: reply about a chargeback is always human
+    tool: reply_to_customer
+    enable: [reply-informational-auto]
+    params: { customer_id: c_1, category: informational, topics: [chargeback], guard_passed: true, claims_verified: true }
+    expect: { decision: human, rule: reply-sensitive-topics-human }
+
+  - name: action confirmation is auto only after a verified action
+    tool: reply_to_customer
+    enable: [reply-action-confirmation-auto]
+    case: { customer_id: c_1, last_action_state: done }
+    params: { customer_id: c_1, category: action_confirmation, topics: [], guard_passed: true, claims_verified: true }
+    expect: { decision: auto, rule: reply-action-confirmation-auto }
+
+  - name: action confirmation for a pending refund is human
+    tool: reply_to_customer
+    enable: [reply-action-confirmation-auto]
+    case: { customer_id: c_1, last_action_state: initiated }
+    params: { customer_id: c_1, category: action_confirmation, topics: [], guard_passed: true, claims_verified: true }
+    expect: { decision: human, rule: null }
+
+  # ---- look_up_account and escalate_to_human ----
+  - name: reading the case customer is auto
+    tool: look_up_account
+    params: { customer_id: c_1 }
+    expect: { decision: auto, rule: reads-auto }
+
+  - name: reading another customer is denied
+    tool: look_up_account
+    params: { customer_id: c_2 }
+    expect: { decision: deny, rule: reads-other-customer-deny }
+
+  - name: escalation is always auto
+    tool: escalate_to_human
+    params: { customer_id: c_1 }
+    expect: { decision: auto, rule: escalate-auto }

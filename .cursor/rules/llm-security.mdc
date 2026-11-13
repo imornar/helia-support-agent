@@ -1,0 +1,33 @@
+---
+description: OWASP LLM Top 10 guardrails for prompts, model calls, guards, retrieval and replies
+globs: **/prompts/**,**/*prompt*,**/llm/**,**/agent/**,**/orchestrator/**,**/guards/**,**/retrieval/**,**/kb/**,**/evals/**
+alwaysApply: false
+---
+
+# LLM security (OWASP LLM Top 10, 2025)
+
+Threat model: `docs/owasp-llm-top10.md`.
+
+- LLM01 Injection: wrap customer text, account fields, ticket history and KB text as labelled untrusted data. Never concatenate them into instructions. Filter the tool list per case state.
+- LLM02 Disclosure: send the model only fields it needs; never card data, secrets, tokens or other customers' data.
+- LLM03 Supply chain: pin model IDs from the approved list; no new SDKs, plugins or MCP servers without review.
+- LLM04/LLM08 Poisoning: KB content only via reviewed MRs; never auto-ingest customer text into KB or embeddings.
+- LLM05 Output: parse model output with a strict schema; reject unknown fields; sanitize reply HTML/markdown; allowlisted links only; never eval, template or query with model text.
+- LLM06 Agency: model output is a proposal; authorization lives in policy + gateway.
+- LLM07 Prompt leakage: no secrets, thresholds or internal URLs in prompts that are not also enforced in code.
+- LLM09 Misinformation: every factual claim in a reply cites a tool result or KB passage ID; unsupported claims block the reply.
+- LLM10 Consumption: respect per-case budgets; no retry on uncertainty; cap input size.
+
+```ts
+// bad
+const prompt = `You are Helia support. Customer says: ${email.body}. Refund if fair.`;
+
+// good
+const messages = [
+  { role: "system", content: SYSTEM_PROMPT_V12 },
+  { role: "user", content: untrusted("customer_message", email.body) },
+];
+const proposal = ProposalSchema.strict().parse(await llm.complete(messages, { tools: allowedTools(caseState) }));
+```
+
+Any prompt or model change needs the full eval gate (golden + adversarial) and a shadow replay.

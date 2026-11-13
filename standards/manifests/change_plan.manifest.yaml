@@ -1,0 +1,67 @@
+name: change_plan
+version: 1
+owner_team: payments
+description: >
+  Move the customer's subscription to another plan, effective now or at the next renewal.
+
+risk_tier: R2
+side_effect: write
+kill_switch_flag: agent.tool.change_plan.enabled
+
+credentials:
+  scope: ["helia-billing:subscriptions:write", "helia-billing:subscriptions:read"]
+
+customer_binding: case
+
+inputs:
+  customer_id:  { type: string, source: case }
+  target_plan:  { type: enum, source: model, values: [starter, pro, business] }
+  effective:    { type: enum, source: model, values: [now, next_renewal] }
+  direction:    { type: enum, source: derived, values: [upgrade, downgrade, same], rule: "compare price of target_plan with current plan" }
+  loses_data:   { type: boolean, source: derived, rule: "target_plan lacks a feature the customer currently uses" }
+  proration_minor: { type: integer, source: derived, rule: "billing proration preview for effective=now" }
+  currency:     { type: string, source: derived, rule: "subscription currency (ISO 4217)" }
+  customer_confirmation:
+    type: object
+    source: derived
+    rule: "signed_link_verified=true only if the customer clicked a signed, case-bound confirm link"
+
+pii_fields: [customer_id]
+
+idempotency:
+  key: "sha256(case_id, step_id, target_plan, effective)"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET the subscription and assert plan == target_plan (or scheduled change for next_renewal)"
+  states:
+    active: done
+    scheduled: initiated
+    failed: failed
+
+undo:
+  kind: compensating
+  how: "change_plan back to the previous plan and effective date (no PII involved)."
+  preauthorized_window: 1h
+
+rate_limits:
+  per_customer: 2/day
+  global: 500/hour
+
+approval:
+  policy_ref: change_plan
+  card_fields: [current_plan, target_plan, effective, direction, proration_minor, currency, loses_data]
+
+audit:
+  extra_fields: [current_plan, target_plan, direction]
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/change_plan.test.ts
+  evals: evals/change_plan/

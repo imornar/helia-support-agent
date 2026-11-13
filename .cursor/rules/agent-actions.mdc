@@ -1,0 +1,29 @@
+---
+description: Team standard for agent tools, manifests and approval policy
+globs: **/tools/**,**/actions/**,**/gateway/**,**/policy/**,**/*.manifest.yaml,**/approval-policy*.yaml,standards/**
+alwaysApply: false
+---
+
+# Agent actions must meet the team standard
+
+Full checklist: `docs/team-standard.md`. Template: `standards/tool-manifest.template.yaml`. Manifests live in `standards/manifests/`. Run `python3 scripts/validate.py` after every change here.
+
+- Every tool has a manifest; no direct Helia API calls outside the gateway.
+- Risk tier: R0 read, R1 reversible, R2 billing/data, R3 irreversible. No undo means R3.
+- Model-chosen inputs are enums, bounded values, or IDs proposed from server-provided `candidates` (validated by the gateway). Amounts, currency and `customer_id` are never model-sourced.
+- Writes need an idempotency key, max 2 retries on transient errors, read-back mapped to `done` / `initiated` / `failed`.
+- Before-images go to `compensation_store`, never the audit log.
+- New tools ship with the kill-switch flag off; new `auto` rules start `enabled: false` with a `cap` (R3 also needs `standing_approval`).
+- Every policy rule change adds cases to `standards/policy-tests.yaml` at the boundary.
+
+```ts
+// bad: model decides the amount
+await billing.refund({ chargeId: plan.chargeId, amount: plan.amount });
+
+// good: model proposes a charge from candidates, server derives amount and currency, gateway enforces approval
+const charge = await charges.getForCase(caseCtx, proposal.chargeId); // throws if not a candidate
+const { amountMinor, currency } = refundAmount(charge, proposal.scope);
+await gateway.execute("issue_refund", { chargeId: charge.id, amountMinor, currency }, approvalToken);
+```
+
+Money rules need a Finance code owner; gateway, credentials or guards need Security.

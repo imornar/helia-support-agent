@@ -1,0 +1,13 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax"],
+  "autoReview": ["open", "push"],
+  "triggerOnDrafts": false,
+  "fixWithAI": true,
+  "ignorePatterns": "**/*.lock\n**/dist/**\n**/build/**\n**/node_modules/**\n**/*.generated.*\n**/*.snap",
+  "summarySection": { "included": true, "collapsible": true, "defaultOpen": false },
+  "issuesTableSection": { "included": true, "collapsible": false, "defaultOpen": true },
+  "confidenceScoreSection": { "included": true, "collapsible": false, "defaultOpen": true },
+  "sequenceDiagramSection": { "included": true, "collapsible": true, "defaultOpen": false },
+  "autoApprove": { "enabled": false }
+}

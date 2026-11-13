@@ -1,0 +1,55 @@
+name: escalate_to_human
+version: 1
+owner_team: platform
+description: >
+  Hand the case to a support agent with a summary and the case timeline. Always available.
+
+risk_tier: R0
+side_effect: write
+kill_switch_flag: agent.tool.escalate_to_human.enabled   # never auto-tripped; it is the safe exit
+
+credentials:
+  scope: ["helia-ticketing:cases:assign"]
+
+customer_binding: case
+
+inputs:
+  customer_id: { type: string, source: case }
+  reason:      { type: enum, source: model, values: [low_confidence, policy_denied, budget_exhausted, sensitive_topic, customer_request, tool_failure] }
+  summary:     { type: string, source: model, max_length: 2000 }
+
+pii_fields: [customer_id]
+
+idempotency:
+  key: "sha256(case_id, 'escalate')"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET the case and assert it is assigned to the human queue"
+  states:
+    assigned: done
+    failed: failed
+
+undo:
+  kind: compensating
+  how: "A human can return the case to the agent from the console."
+  preauthorized_window: 0h
+
+rate_limits:
+  per_customer: 10/day
+  global: 2000/hour
+
+approval:
+  policy_ref: escalate_to_human
+  card_fields: []
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/escalate_to_human.test.ts
+  evals: evals/escalate_to_human/

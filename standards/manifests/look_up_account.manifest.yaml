@@ -1,0 +1,45 @@
+name: look_up_account
+version: 1
+owner_team: accounts
+description: >
+  Read the case customer's profile, plan, recent charges and refunds.
+
+risk_tier: R0
+side_effect: read
+kill_switch_flag: agent.tool.look_up_account.enabled
+
+credentials:
+  scope: ["helia-accounts:profile:read", "helia-billing:charges:read"]
+
+customer_binding: case
+
+inputs:
+  customer_id: { type: string, source: case }
+  sections:    { type: enum, source: model, values: [profile, plan, charges, refunds] }
+
+pii_fields: [customer_id, email, billing_address]
+
+# Fields the model never receives, even though the API returns them.
+model_field_denylist: [card_number, card_last4, bank_account, auth_tokens, internal_notes]
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+
+undo:
+  kind: none
+  how: "Read-only; nothing to undo."
+
+rate_limits:
+  per_customer: 30/hour
+  global: 5000/hour
+
+approval:
+  policy_ref: look_up_account
+  card_fields: []
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/look_up_account.test.ts
+  evals: evals/look_up_account/

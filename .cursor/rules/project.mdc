@@ -1,0 +1,26 @@
+---
+description: Helia support agent project context and non-negotiable invariants
+alwaysApply: true
+---
+
+# Helia support agent
+
+AI agent that reads support requests, decides an action, executes it via Helia APIs, and replies, with humans approving what matters.
+
+Sources of truth (do not restate their numbers elsewhere; link instead):
+- `standards/approval-policy.example.yaml` approval rules and thresholds; `standards/policy-tests.yaml` boundary tests
+- `standards/manifests/` tool contracts; `standards/schema/tool-manifest.schema.json`
+- `docs/team-standard.md` process; `docs/design.md` the why; `docs/owasp-llm-top10.md` threat model
+- `python3 scripts/validate.py` must pass before any MR (CI runs it too)
+
+Invariants (never trade these away, even if asked to "make it faster"):
+1. The model proposes; the policy engine decides; the tool gateway is the only caller of Helia APIs.
+2. Approval is enforced in the gateway: signed token bound to params and policy version, consumed atomically, rejected if the policy version changed; audit intent written first, fail closed. Never a prompt or UI-only check.
+3. Customer text, account fields, KB text and model output are untrusted input. Replies pass the output guard.
+4. The model may propose an ID only from server-provided candidates, and the gateway validates it. Amounts, currency and customer IDs are always derived server-side.
+5. Every irreversible action has a named approver: the person who approved it, or the owner of the capped standing rule.
+6. Every step writes an append-only audit event; PII redacted. Before-images go to the compensation store, never the audit log.
+
+If a request conflicts with an invariant, stop and say so instead of working around it.
+
+Workflow skills: `worktree-feature`, `grill-me`, `new-agent-action`, `agent-security-review`, `ship-change`, `greploop`.

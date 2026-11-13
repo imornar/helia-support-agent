@@ -1,0 +1,62 @@
+name: update_account
+version: 1
+owner_team: accounts
+description: >
+  Change one field on the customer's account.
+
+risk_tier: R2
+side_effect: write
+kill_switch_flag: agent.tool.update_account.enabled
+
+credentials:
+  scope: ["helia-accounts:profile:write", "helia-accounts:profile:read"]
+
+customer_binding: case
+
+inputs:
+  customer_id: { type: string, source: case }
+  field:
+    type: enum
+    source: model
+    values: [display_name, notification_settings, language, email, owner, payment_method, billing_address]
+  new_value:   { type: string, source: model, max_length: 200, rule: "validated per field (format, allowlist)" }
+
+pii_fields: [customer_id, new_value, before_image]
+
+idempotency:
+  key: "sha256(case_id, step_id, field, sha256(new_value))"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET the account and assert field == new_value"
+  states:
+    updated: done
+    failed: failed
+
+undo:
+  kind: before_image
+  how: "Restore the previous value from the compensation store, with human approval."
+  before_image_store: compensation_store
+  preauthorized_window: 0h
+
+rate_limits:
+  per_customer: 3/day
+  global: 500/hour
+
+approval:
+  policy_ref: update_account
+  card_fields: [field, current_value_masked, new_value_masked]
+
+audit:
+  extra_fields: [field, before_image_ref]   # reference + hash only; the value lives in the compensation store
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/update_account.test.ts
+  evals: evals/update_account/

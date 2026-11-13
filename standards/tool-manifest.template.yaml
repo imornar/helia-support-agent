@@ -1,0 +1,72 @@
+# Tool manifest template. Copy to standards/manifests/<tool_name>.manifest.yaml.
+# The gateway refuses any tool without a valid manifest. CI validates every manifest against
+# standards/schema/tool-manifest.schema.json plus the semantic checks in scripts/validate.py.
+
+name: example_tool              # snake_case, matches the gateway route
+version: 1                      # bump on any schema or behaviour change
+owner_team: payments            # payments | accounts | platform
+description: >
+  One sentence a support agent would understand. Shown on the approval card.
+
+risk_tier: R2                   # R0 read | R1 reversible | R2 billing/data | R3 irreversible
+side_effect: write              # read | write
+kill_switch_flag: agent.tool.example_tool.enabled   # defaults to off for new tools
+
+credentials:
+  scope: ["helia-billing:plans:write"]   # least privilege, this tool only
+
+customer_binding: case          # customer_id always comes from the case, never the model
+
+inputs:
+  # source: model    -> the model may choose it; must be an enum (values), a bounded number
+  #                     (min/max), or an ID from server-provided candidates (candidates)
+  # source: derived  -> computed server-side from Helia data; any model value is ignored
+  # source: case     -> taken from the case binding
+  customer_id:  { type: string, source: case }
+  target_id:    { type: string, source: model, candidates: "ids returned by look_up_account in this case" }
+  reason_code:  { type: enum, source: model, values: [duplicate_charge, service_outage, goodwill] }
+  amount_minor: { type: integer, source: derived, rule: "exact formula, in minor units of currency" }
+  currency:     { type: string, source: derived, rule: "currency of the target record (ISO 4217)" }
+
+pii_fields: [customer_id]       # redacted in logs, never sent to the model unless required
+
+idempotency:
+  key: "sha256(case_id, step_id, canonical(inputs))"
+  window: 24h
+
+retries:
+  retry_on: [timeout, http_5xx, http_429]
+  max: 2
+  backoff: exponential
+  unknown_outcome: read_back_before_retry
+
+verify:
+  read_back: "GET the record and assert the new state"
+  # Map each Helia state to what the reply may claim. Only `done` allows "completed" wording.
+  states:
+    succeeded: done
+    pending: initiated
+    failed: failed
+
+undo:
+  kind: compensating            # compensating | before_image | none
+  how: "Describe the reverse call, or 'none' (then risk_tier must be R3)"
+  before_image_store: compensation_store   # required for before_image: encrypted, access-controlled,
+                                           # retention = undo window + 30d. Never the audit log.
+  preauthorized_window: 1h      # compensation covered by the original approval
+
+rate_limits:
+  per_customer: 3/day
+  global: 500/hour
+
+approval:
+  policy_ref: example_tool      # rule group in the approval policy bundle
+  card_fields: [target_id, amount_minor, currency, reason_code]   # what the human sees
+
+audit:
+  extra_fields: [reason_code]   # on top of the mandatory audit fields
+
+tests:
+  policy: standards/policy-tests.yaml
+  contract: tests/contract/example_tool.test.*
+  evals: evals/example_tool/

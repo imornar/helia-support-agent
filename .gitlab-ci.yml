@@ -1,0 +1,32 @@
+stages: [validate]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+consistency:
+  stage: validate
+  image: python:3.12-slim
+  script:
+    - pip install --quiet pyyaml==6.0.2 jsonschema==4.25.1
+    - python3 scripts/validate.py
+
+mermaid:
+  stage: validate
+  image:
+    name: minlag/mermaid-cli:12.0.1
+    entrypoint: [""]
+  script:
+    - mkdir -p mermaid-out
+    - |
+      i=0
+      for f in $(find . -name '*.md' -not -path './.git/*' -not -path './node_modules/*' -exec grep -l '^```mermaid' {} +); do
+        awk -v out="mermaid-out/$i" '/^```mermaid/{f=1;n++;next} /^```/{f=0} f{print > (out "-" n ".mmd")}' "$f"
+        i=$((i+1))
+      done
+    - for d in mermaid-out/*.mmd; do /home/mermaidcli/node_modules/.bin/mmdc -p scripts/puppeteer-config.json -i "$d" -o "$d.svg"; done
+  artifacts:
+    when: always
+    paths: [mermaid-out/]
+    expire_in: 1 week

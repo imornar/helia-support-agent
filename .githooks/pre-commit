@@ -1,0 +1,17 @@
+#!/bin/sh
+# Blocks commits on main so feature work happens on its own worktree.
+# Opt in once per clone: git config core.hooksPath .githooks
+
+branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+case "$branch" in
+  main|master)
+    echo "pre-commit: refusing to commit on '$branch'." >&2
+    echo "Create a worktree first, e.g.:" >&2
+    echo "  git worktree add -b feat/<team>/<slug> ../\$(basename \"\$(pwd)\")-worktrees/<slug> origin/main" >&2
+    echo "Or use the 'worktree-feature' skill. Bypass only with explicit approval: git commit --no-verify" >&2
+    exit 1
+    ;;
+esac
+
+exit 0

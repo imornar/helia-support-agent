@@ -1,0 +1,141 @@
+# Approval policy bundle (example). The single source of truth for who approves what.
+# Evaluated by the policy engine AND re-evaluated inside the tool gateway.
+# Enabled rules are checked in priority order (high first); the first match decides.
+# No match means default_decision. Boundary tests: standards/policy-tests.yaml.
+#
+# Priority bands: 1100+ deny floors, 1000 always-human floors, 100 earned auto, 50 R0 auto.
+# Floors must outrank every auto rule for the same tool (CI enforces this).
+# Money rules (issue_refund, change_plan) require a Finance code owner on the MR.
+# Amounts are integer minor units. Caps are defined in USD; other currencies stay human
+# until per-currency caps are added.
+
+version: 2026-11-13.1
+default_decision: human
+
+rules:
+  # ---- Deny floors ----
+  - id: reads-other-customer-deny
+    priority: 1100
+    tool: look_up_account
+    when: "customer_id != case.customer_id"
+    decision: deny
+
+  - id: refund-currency-mismatch-deny
+    priority: 1100
+    tool: issue_refund
+    when: "currency != charge.currency"
+    decision: deny
+
+  # ---- Always-human floors ----
+  - id: refund-over-500-always-human
+    priority: 1000
+    tool: issue_refund
+    when: "amount_minor > 50000"
+    decision: human
+
+  - id: plan-downgrade-or-data-loss-human
+    priority: 1000
+    tool: change_plan
+    when: "direction == 'downgrade' or loses_data"
+    decision: human
+
+  - id: account-identity-fields-human
+    priority: 1000
+    tool: update_account
+    when: "field in ['email', 'owner', 'payment_method', 'billing_address']"
+    decision: human
+
+  - id: reply-sensitive-topics-human
+    priority: 1000
+    tool: reply_to_customer
+    when: "any(t in ['legal', 'chargeback', 'security', 'cancellation'] for t in topics)"
+    decision: human
+
+  - id: reply-guard-or-claims-failed-human
+    priority: 1000
+    tool: reply_to_customer
+    when: "not guard_passed or not claims_verified"
+    decision: human
+
+  # ---- Earned auto (phase 3 for writes, phase 2 for replies) ----
+  # Each starts enabled: false and is switched on only when its rollout gate passes.
+  # R3 auto rules are standing approvals: the accountable owner who approves the MR that
+  # enables the rule is recorded as approver_id on every action the rule authorizes.
+
+  - id: refund-small-auto
+    priority: 100
+    enabled: false
+    tool: issue_refund
+    cap: "USD 50.00 (5000 minor units), one per customer per 90 days"
+    standing_approval: { approved_by_role: finance }
+    when: >
+      currency == 'USD'
+      and amount_minor <= 5000
+      and charge.within_refund_window
+      and customer.agent_refunds_90d == 0
+    decision: auto
+
+  - id: plan-upgrade-confirmed-auto
+    priority: 100
+    enabled: false
+    tool: change_plan
+    cap: "upgrade only, proration up to USD 100.00, customer-confirmed via signed link"
+    when: >
+      direction == 'upgrade'
+      and customer_confirmation.signed_link_verified
+      and currency == 'USD'
+      and proration_minor <= 10000
+    decision: auto
+
+  - id: account-profile-fields-auto
+    priority: 100
+    enabled: false
+    tool: update_account
+    cap: "display_name, notification_settings, language only"
+    when: "field in ['display_name', 'notification_settings', 'language']"
+    decision: auto
+
+  - id: reply-informational-auto
+    priority: 100
+    enabled: false
+    tool: reply_to_customer
+    cap: "informational category, output guard passed, every claim verified"
+    standing_approval: { approved_by_role: support_lead }
+    when: "category == 'informational' and guard_passed and claims_verified"
+    decision: auto
+
+  - id: reply-action-confirmation-auto
+    priority: 100
+    enabled: false
+    tool: reply_to_customer
+    cap: "confirms only an action the gateway read back as done"
+    standing_approval: { approved_by_role: support_lead }
+    when: >
+      category == 'action_confirmation'
+      and guard_passed and claims_verified
+      and case.last_action_state == 'done'
+    decision: auto
+
+  # ---- R0 auto ----
+  - id: reads-auto
+    priority: 50
+    tool: look_up_account
+    when: "customer_id == case.customer_id"
+    decision: auto
+
+  - id: escalate-auto
+    priority: 50
+    tool: escalate_to_human
+    decision: auto
+
+approvals:
+  approver_role: action_approver
+  token:
+    ttl: 15m
+    bind: [tool, canonical_params, case_id, policy_version]
+    consume: atomic          # compare-and-set on token_id before the Helia call; any reuse is rejected
+    stale_policy: reject     # token.policy_version != gateway's active version: send back for re-approval
+  audit_fail_mode: closed    # the intent audit event must be durably written before execution
+  # Example of tightening later: require two distinct approvers above USD 2,000.
+  # - when: "tool == 'issue_refund' and amount_minor > 200000"
+  #   approvals_required: 2

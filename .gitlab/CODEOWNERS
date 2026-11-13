@@ -1,0 +1,31 @@
+# Placeholder group names: replace with the real GitLab groups.
+# Pair with a protected `main` branch and "Require code owner approval".
+# In GitLab, the last matching pattern wins, so each line lists every required owner.
+
+*                                   @helia/platform
+
+# Design and standards (these documents define security policy)
+/docs/                              @helia/platform @helia/security
+/docs/design.md                     @helia/platform @helia/security @helia/finance-reviewers
+/docs/team-standard.md              @helia/platform @helia/security @helia/payments @helia/accounts
+/standards/                         @helia/platform @helia/security
+
+# Money and account rules
+/standards/approval-policy*.yaml    @helia/platform @helia/security @helia/finance-reviewers
+/standards/policy-tests.yaml        @helia/platform @helia/security @helia/finance-reviewers
+/standards/manifests/issue_refund*  @helia/payments @helia/security @helia/finance-reviewers
+/standards/manifests/change_plan*   @helia/payments @helia/security @helia/finance-reviewers
+/standards/manifests/update_account* @helia/accounts @helia/security
+policy/                             @helia/platform @helia/finance-reviewers
+
+# Safety net
+gateway/                            @helia/platform @helia/security
+guards/                             @helia/platform @helia/security
+prompts/                            @helia/platform @helia/security
+/.greptile/                         @helia/platform @helia/security
+/.cursor/rules/                     @helia/platform @helia/security
+/.cursor/skills/                    @helia/platform @helia/security
+/.githooks/                         @helia/platform @helia/security
+/scripts/                           @helia/platform @helia/security
+/.gitlab-ci.yml                     @helia/platform @helia/security
+/.gitlab/CODEOWNERS                 @helia/platform @helia/security

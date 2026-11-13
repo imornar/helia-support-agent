@@ -1,0 +1,16 @@
+---
+description: How to write and update design docs, decisions and the architecture diagram
+globs: docs/**,README.md,CONTRIBUTING.md
+alwaysApply: false
+---
+
+# Design docs
+
+- Short beats long. Lead with the decision, then the trade-off: what we give up and why.
+- State assumptions explicitly; if something is unknown, assume and label it.
+- Architecture changes update the Mermaid diagram in `docs/design.md` in the same MR. Keep it to one diagram, numbered flow edges, OWASP tags on components.
+- New or reversed decisions get a new row in `docs/decisions.md`; never rewrite history.
+- Policy YAML, manifests and `docs/team-standard.md` are the sources of truth; docs explain why and link to them instead of restating numbers. The section 3 table in `docs/design.md` must match the policy and manifests.
+- Run `python3 scripts/validate.py` after editing docs; it checks links, the section 3 table, audit-field sync and em dashes.
+- Tables only for short enumerable facts; reasoning goes in prose.
+- No em dash characters; use commas, colons or parentheses.

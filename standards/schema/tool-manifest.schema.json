@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Helia agent tool manifest",
+  "type": "object",
+  "required": [
+    "name", "version", "owner_team", "description", "risk_tier", "side_effect",
+    "kill_switch_flag", "credentials", "customer_binding", "inputs", "pii_fields",
+    "retries", "undo", "rate_limits", "approval", "tests"
+  ],
+  "properties": {
+    "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "owner_team": { "enum": ["payments", "accounts", "platform"] },
+    "description": { "type": "string", "minLength": 10 },
+    "risk_tier": { "enum": ["R0", "R1", "R2", "R3"] },
+    "side_effect": { "enum": ["read", "write"] },
+    "kill_switch_flag": { "type": "string", "pattern": "^agent\\.tool\\.[a-z0-9_]+\\.enabled$" },
+    "credentials": {
+      "type": "object",
+      "required": ["scope"],
+      "properties": { "scope": { "type": "array", "minItems": 1, "items": { "type": "string" } } }
+    },
+    "customer_binding": { "const": "case" },
+    "inputs": {
+      "type": "object",
+      "required": ["customer_id"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["type", "source"],
+        "properties": {
+          "type": { "enum": ["string", "integer", "boolean", "enum", "list", "object"] },
+          "source": { "enum": ["model", "derived", "case"] },
+          "values": { "type": "array", "minItems": 1 },
+          "candidates": { "type": "string" },
+          "min": { "type": "number" },
+          "max": { "type": "number" },
+          "max_length": { "type": "integer", "minimum": 1 },
+          "rule": { "type": "string" }
+        }
+      }
+    },
+    "pii_fields": { "type": "array", "items": { "type": "string" } },
+    "model_field_denylist": { "type": "array", "items": { "type": "string" } },
+    "idempotency": {
+      "type": "object",
+      "required": ["key", "window"],
+      "properties": { "key": { "type": "string" }, "window": { "type": "string" } }
+    },
+    "retries": {
+      "type": "object",
+      "required": ["retry_on", "max", "backoff"],
+      "properties": {
+        "retry_on": { "type": "array", "items": { "enum": ["timeout", "http_5xx", "http_429"] } },
+        "max": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "backoff": { "enum": ["exponential"] },
+        "unknown_outcome": { "const": "read_back_before_retry" }
+      }
+    },
+    "verify": {
+      "type": "object",
+      "required": ["read_back", "states"],
+      "properties": {
+        "read_back": { "type": "string" },
+        "states": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "enum": ["done", "initiated", "failed"] }
+        }
+      }
+    },
+    "undo": {
+      "type": "object",
+      "required": ["kind", "how"],
+      "properties": {
+        "kind": { "enum": ["compensating", "before_image", "none"] },
+        "how": { "type": "string" },
+        "before_image_store": { "const": "compensation_store" },
+        "preauthorized_window": { "type": "string" }
+      }
+    },
+    "rate_limits": {
+      "type": "object",
+      "required": ["per_customer", "global"],
+      "properties": { "per_customer": { "type": "string" }, "global": { "type": "string" } }
+    },
+    "approval": {
+      "type": "object",
+      "required": ["policy_ref", "card_fields"],
+      "properties": {
+        "policy_ref": { "type": "string" },
+        "card_fields": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "audit": {
+      "type": "object",
+      "properties": { "extra_fields": { "type": "array", "items": { "type": "string" } } }
+    },
+    "tests": {
+      "type": "object",
+      "required": ["policy", "contract", "evals"],
+      "properties": {
+        "policy": { "type": "string" },
+        "contract": { "type": "string" },
+        "evals": { "type": "string" }
+      }
+    }
+  },
+  "additionalProperties": false
+}
