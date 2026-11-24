@@ -11,8 +11,6 @@ glab auth login --hostname git.toptal.com
 
 Greptile must be installed on the GitLab project for reviews and `greploop` to work.
 
-To preview the Mermaid diagram in `docs/design.md`, install the recommended extension: `cursor --install-extension bierner.markdown-mermaid`. Cursor also prompts for it from `.vscode/extensions.json`. Then open the markdown preview with `Ctrl+Shift+V`.
-
 ## Validate locally
 
 ```bash
@@ -20,7 +18,7 @@ pip install pyyaml jsonschema
 python3 scripts/validate.py
 ```
 
-The validator checks manifests against the schema and semantic rules, policy invariants, the boundary tests in `standards/policy-tests.yaml`, that the design table, policy, and manifests agree, audit-field sync between the standard and the Greptile prompt, relative links, and em dashes. CI runs the same script plus a Mermaid render of every diagram.
+The validator checks manifests against the schema and semantic rules, policy invariants, the boundary tests in `standards/policy-tests.yaml`, that the design table, policy, and manifests agree, audit-field sync between the standard and the Greptile prompt, relative links, and em dashes. CI runs the same script.
 
 ## Workflow for every change
 

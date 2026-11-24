@@ -20,7 +20,7 @@ Feature work belongs on its own git worktree. `main` stays the anchor so paralle
 |---|---|
 | `standards/` | Approval policy and its boundary tests, the six tool manifests, the manifest template and JSON Schema (sources of truth) |
 | `scripts/validate.py` | Consistency checks run by CI and before every MR |
-| `.gitlab-ci.yml` | Runs the validator and renders every Mermaid diagram |
+| `.gitlab-ci.yml` | Runs the validator |
 | `.cursor/rules/` | Agent rules: project invariants, worktrees, agent actions, LLM security, docs |
 | `.cursor/skills/` | `worktree-feature`, `grill-me`, `new-agent-action`, `agent-security-review`, `ship-change`, `greploop` |
 | `.greptile/` | `rules.md` (the custom review prompt) and `config.json` |

@@ -15,47 +15,7 @@
 
 ## 1. Architecture
 
-```mermaid
-%%{init: {"flowchart": {"wrappingWidth": 320, "rankSpacing": 40, "nodeSpacing": 30}}}%%
-flowchart TB
-    CUST([Customer]) -->|"1 message"| CH[Ticketing and chat]
-    CH --> ORCH["<b>Orchestrator</b><br/>state machine, budgets, deadlines<br/>[LLM10]"]
-    ORCH -->|2| IN["<b>Input guard</b><br/>size caps, minimise PII, label untrusted text<br/>[LLM01, LLM02]"]
-
-    subgraph UZ["UNTRUSTED ZONE"]
-        direction LR
-        KB[("<b>Policy knowledge base</b><br/>curated, read-only<br/>[LLM04, LLM08]")] -.->|retrieve| LLM["<b>LLM planner</b><br/>no credentials, no network<br/>returns one proposed action (JSON)<br/>[LLM01, LLM07]"]
-    end
-
-    IN -->|3| LLM
-    LLM -->|"4 proposal"| OG["<b>Output guard</b><br/>sanitize, PII filter, link allowlist,<br/>claim check, prompt-echo check<br/>[LLM02, LLM05, LLM07, LLM09]"]
-    OG -->|"5 checked proposal"| POL["<b>Policy engine</b><br/>schema, recompute amounts, pick tier<br/>[LLM05, LLM06]"]
-    POL -->|"6a auto tier"| GW
-    POL -->|"6b needs human"| APPR
-
-    subgraph HU["HUMAN CONTROL"]
-        direction LR
-        APPR["<b>Approval service</b><br/>signed single-use token"] <-->|"approve / edit / reject"| CON["<b>Support console</b><br/>existing UI + agent panel"]
-    end
-
-    APPR -->|"7 token"| GW["<b>Tool gateway</b><br/>only holder of API credentials<br/>atomic token use, policy re-check,<br/>idempotency, kill switch<br/>[LLM03, LLM06]"]
-    GW -->|"8 call or reply"| API[("Helia APIs and ticketing")]
-    GW -.->|"9 verified result"| ORCH
-    ORCH -.->|escalate| CON
-
-    API ~~~ AUD[("<b>Audit log</b><br/>every step, append-only, no PII")]
-
-    classDef untrusted fill:#fdecea,stroke:#c5221f,color:#000
-    classDef control fill:#e8f0fe,stroke:#1a73e8,color:#000
-    classDef human fill:#e6f4ea,stroke:#188038,color:#000
-    classDef store fill:#f1f3f4,stroke:#5f6368,color:#000
-    class LLM,KB untrusted
-    class ORCH,IN,OG,POL,GW control
-    class APPR,CON human
-    class API,AUD,CH,CUST store
-    style UZ fill:#fff5f5,stroke:#c5221f,stroke-width:2px,color:#a50e0e
-    style HU fill:#f3fbf5,stroke:#188038,stroke-width:2px,color:#0d652d
-```
+![Helia support agent architecture. The customer message passes through ticketing, the orchestrator, the input guard, and the LLM planner. The proposal then passes the output guard and the policy engine. Auto-tier actions go to the tool gateway. Other actions go through human approval. The gateway calls Helia APIs and writes the audit log.](arhitecture.png)
 
 Red is untrusted, blue is deterministic code we control, green is human, grey is a system of record. Solid arrows are the request path; dotted arrows are feedback (verified results, escalation). Every step writes to the audit log. Tags such as `[LLM06]` are the OWASP LLM Top 10 (2025) risks that component mitigates; see [owasp-llm-top10.md](owasp-llm-top10.md).
 
@@ -214,7 +174,7 @@ The full rules are in [team-standard.md](team-standard.md). The mechanics:
   - policy boundary tests
   - that the section 3 table, the policy, and the manifests agree
   - that audit-field lists agree across files
-  - links, Mermaid rendering, and em dashes
+  - links and em dashes
 - **Testing before release:** prompts, models, policies, and tools are versioned artifacts released through the same pipeline. Each release needs:
   - contract tests against the Helia sandbox
   - the policy boundary tests
